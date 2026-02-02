@@ -5,6 +5,7 @@ from options import Options
 from constants import INSTALLER_DOWNLOAD_URL, GAME_DOWNLOAD_URL, MOD_LOADER_DOWNLOAD_URL
 import os
 import zipfile
+import logging
 
 
 def launcher(options: Options):
@@ -18,7 +19,7 @@ def launcher(options: Options):
 
     try:
         if options.auto_update_installer:
-            print("Auto-updating installer...")
+            logging.info("Auto-updating installer...")
             response = requests.get(INSTALLER_DOWNLOAD_URL)
             response.raise_for_status()
             with open(
@@ -30,7 +31,7 @@ def launcher(options: Options):
                 f.write(response.content)
 
         if options.backup_before_install:
-            print("Backing up game files...")
+            logging.info("Backing up game files...")
             backup_dir = os.path.join(
                 options.game_install_path, "backup"
             )
@@ -52,10 +53,10 @@ def launcher(options: Options):
                     os.path.join(tempfile_dir.name, "game_backup.zip"), backup_dir
                 )
             except shutil.Error:
-                print("Backup file already exists. Keeping existing backup.")
+                logging.info("Backup file already exists. Keeping existing backup.")
 
         if options.auto_update_game:
-            print("Auto-updating game...")
+            logging.info("Auto-updating game...")
             response = requests.get(GAME_DOWNLOAD_URL, stream=True)
             response.raise_for_status()
             tempfile_dir = tempfile.TemporaryDirectory()
@@ -115,20 +116,20 @@ def launcher(options: Options):
             tempfile_dir.cleanup()
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
         if options.restore_backup_on_failure:
-            print("Restoring from backup...")
+            logging.info("Restoring from backup...")
             backup_zip_path = os.path.join(
                 options.game_install_path, "backup", "game_backup.zip"
             )
             if os.path.exists(backup_zip_path):
                 with zipfile.ZipFile(backup_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(options.game_install_path)
-                print("Restoration complete.")
+                logging.info("Restoration complete.")
             else:
-                print("No backup found to restore.")
+                logging.info("No backup found to restore.")
         raise
 
-    print("Launching installer with options:")
-    print(f"Game install path: {options.game_install_path}")
-    print(f"Mod list: {options.mod_list}")
+    logging.info("Launching installer with options:")
+    logging.info(f"Game install path: {options.game_install_path}")
+    logging.info(f"Mod list: {options.mod_list}")

@@ -10,6 +10,10 @@ from launcher import launcher
 from platformdirs import user_config_dir
 from mods import AVAILABLE_MODS
 from constants import INSTALLER_DOWNLOAD_URL
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
 
 
 def load_config(file_path: str) -> Any:
@@ -24,32 +28,32 @@ def save_config(file_path: str, config: Any):
 
 def main():
     options = parse_options()
-    print("Parsed options:", vars(options))
+    logging.info("Parsed options: %s", vars(options))
     global tk, messagebox, filedialog
     if options.no_window:
-        print("Running installer in no-window mode.")
+        logging.info("Running installer in no-window mode.")
     else:
         import tkinter as tk
         from tkinter import messagebox, filedialog
 
-        print("Running installer with GUI.")
+        logging.info("Running installer with GUI.")
 
-    alread_installed = False
+    already_installed = False
     if options.installer_install_path:
         if os.path.exists(options.installer_install_path):
-            alread_installed = True
+            already_installed = True
 
     if not options.setting_save_path and os.path.exists(
         os.path.join(user_config_dir("ToppleBitModding"), "config")
     ):
-        alread_installed = True
+        already_installed = True
         config_path = os.path.join(user_config_dir("ToppleBitModding"), "config")
         with open(config_path, "r") as f:
             options.setting_save_path = f.read().strip()
 
     if options.setting_save_path:
         if os.path.exists(options.setting_save_path):
-            alread_installed = True
+            already_installed = True
             config = load_config(options.setting_save_path)
             for key, value in config.items():
                 if (
@@ -65,11 +69,11 @@ def main():
             messagebox.showerror(
                 "Error", "One or more specified mods are not available."
             )
-        print("Error: One or more specified mods are not available.")
+        logging.error("Error: One or more specified mods are not available.")
         sys.exit(1)
 
-    if alread_installed:
-        print("Installer already installed or settings file found. Skipping setup.")
+    if already_installed:
+        logging.info("Installer already installed or settings file found. Skipping setup.")
         launcher(options)
         return
 
@@ -283,7 +287,7 @@ def main():
         root.mainloop()
 
         if not submitted:
-            print("Setup cancelled by user.")
+            logging.info("Setup cancelled by user.")
             sys.exit(0)
 
     if not options.game_install_path or not options.game_install_path.strip().endswith(
@@ -303,7 +307,7 @@ def main():
             os.path.join(options.installer_install_path, os.path.basename(sys.argv[0])),
         )
     else:
-        print("Running from .py file; downloading installer.")
+        logging.info("Running from .py file; downloading installer.")
         response = requests.get(INSTALLER_DOWNLOAD_URL)
         response.raise_for_status()
         with open(
