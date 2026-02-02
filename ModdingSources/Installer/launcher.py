@@ -1,11 +1,23 @@
 import shutil
+import subprocess
+import hashlib
+import sys
 import tempfile
+import time
 import requests
 from options import Options
-from constants import INSTALLER_DOWNLOAD_URL, GAME_DOWNLOAD_URL, MOD_LOADER_DOWNLOAD_URL
+from constants import INSTALLER_DOWNLOAD_URL, GAME_DOWNLOAD_URL, MOD_LOADER_DOWNLOAD_URL, UPDATER_DOWNLOAD_URL
 import os
 import zipfile
 import logging
+
+
+def sha256(path: str, chunk_size: int = 1024 * 1024):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def launcher(options: Options):
@@ -20,15 +32,50 @@ def launcher(options: Options):
     try:
         if options.auto_update_installer:
             logging.info("Auto-updating installer...")
+
+            response = requests.get(UPDATER_DOWNLOAD_URL)
+            response.raise_for_status()
+            updater = os.path.join(options.installer_install_path, "update.exe")
+            if os.path.exists(updater):
+                while os.path.exists(updater):
+                    try:
+                        os.remove(updater)
+                    except PermissionError:
+                        logging.info("Waiting for existing updater to close...")
+                        time.sleep(1)
+            with open(updater, "wb") as f:
+                f.write(response.content)
+
             response = requests.get(INSTALLER_DOWNLOAD_URL)
             response.raise_for_status()
-            with open(
-                os.path.join(
-                    options.installer_install_path, "ToppleBitModdingLauncher.exe"
-                ),
-                "wb",
-            ) as f:
+
+            old = os.path.join(options.installer_install_path, "ToppleBitModdingLauncher.exe")
+            new = os.path.join(options.installer_install_path, "ToppleBitModdingLauncher.new.exe")
+
+            if os.path.exists(new):
+                os.remove(new)
+            with open(new, "wb") as f:
                 f.write(response.content)
+
+            needs_update = os.path.getsize(old) != os.path.getsize(new) or sha256(old) != sha256(new)
+
+            if needs_update:
+                logging.info("Installer update found. Launching updater...")
+                subprocess.Popen(
+                    [
+                        updater,
+                        options.installer_install_path,
+                    ],
+                    cwd=options.installer_install_path,
+                    close_fds=True,
+                )
+                sys.exit(0)
+            else:
+                if os.path.exists(new):
+                    os.remove(new)
+                if os.path.exists(updater):
+                    os.remove(updater)
+                logging.info("Installer is already up to date.")
 
         if options.backup_before_install:
             logging.info("Backing up game files...")
