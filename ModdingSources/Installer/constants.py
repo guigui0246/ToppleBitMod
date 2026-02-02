@@ -14,5 +14,5 @@ GAME_DOWNLOAD_URL = (
 )
 
 MOD_LOADER_DOWNLOAD_URL = (
-    f"https://github.com/guigui0246/ToppleBitMod/releases/latest/download/ToopleBitMod.v{VERSION}.zip"
+    "https://github.com/guigui0246/ToppleBitMod/releases/latest/download/ToopleBitMod.zip"
 )
