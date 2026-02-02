@@ -1,1 +1,1 @@
-pyinstaller.exe --onefile .\main.py --name ToppleBitModdingLauncher.exe
+pyinstaller.exe --onefile --noconsole .\main.py --name ToppleBitModdingLauncher.exe

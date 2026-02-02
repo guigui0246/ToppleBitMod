@@ -13,7 +13,11 @@ from constants import INSTALLER_DOWNLOAD_URL
 import logging
 
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s][%(levelname)s] %(message)s",
+    filename=os.path.join(user_config_dir("ToppleBitModding", ensure_exists=True), "installer.log"),
+)
 
 
 def load_config(file_path: str) -> Any:
