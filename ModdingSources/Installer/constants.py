@@ -1,5 +1,5 @@
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 INSTALLER_DOWNLOAD_URL = (
     "https://github.com/guigui0246/ToppleBitMod/releases/latest/download/ToppleBitModdingLauncher.exe"

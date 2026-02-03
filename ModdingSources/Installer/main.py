@@ -1,7 +1,6 @@
 import os
 import shutil
 import sys
-import tkinter
 from typing import Any, Callable, cast
 import requests
 import yaml
@@ -92,7 +91,7 @@ def main():
         )
 
     if not options.no_window:
-        root: tkinter.Tk = tk.Tk()
+        root: tk.Tk = tk.Tk()
         root.title("ToppleBit Mod Installer")
         root.geometry("600x400")
 

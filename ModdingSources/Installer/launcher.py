@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import requests
+from ModdingSources.Installer import game
 from options import Options
 from constants import INSTALLER_DOWNLOAD_URL, GAME_DOWNLOAD_URL, MOD_LOADER_DOWNLOAD_URL, UPDATER_DOWNLOAD_URL
 import os
@@ -177,6 +178,54 @@ def launcher(options: Options):
                 logging.info("No backup found to restore.")
         raise
 
-    logging.info("Launching installer with options:")
+    logging.info("Launching launcher with options:")
     logging.info(f"Game install path: {options.game_install_path}")
     logging.info(f"Mod list: {options.mod_list}")
+
+    with game.Game(os.path.join(options.game_install_path, "ToppleBit.exe")) as gameProcess:
+
+        global tk, messagebox
+        if options.no_window:
+            logging.info("Running launcher in no-window mode.")
+            gameProcess.run()
+        else:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            logging.info("Running launcher with GUI.")
+            root = tk.Tk()
+            root.title("ToppleBit Modding Launcher")
+            root.geometry("600x400")
+
+            frame = tk.Frame(root, padx=20, pady=20)
+            frame.pack(fill=tk.BOTH, expand=True)
+
+            tk.Label(frame, text="ToppleBit Modding Launcher", font=("Arial", 16, "bold")).pack(pady=10)
+
+            tk.Label(frame, text=f"Game Path: {options.game_install_path}").pack(anchor=tk.W, pady=5)
+            tk.Label(frame, text=f"Mods: {', '.join(options.mod_list)}").pack(anchor=tk.W, pady=5)
+
+            button_frame = tk.Frame(frame)
+            button_frame.pack(pady=20)
+
+            def on_launch():
+                if gameProcess.is_running():
+                    ret = messagebox.askyesnocancel(
+                        "Warning",
+                        "Game is already running. Do you want to kill the current instance before launching another instance?"
+                    )
+                    if ret is None:
+                        return
+                    if ret:
+                        gameProcess.kill()
+                        gameProcess.run()
+                    else:
+                        gameProcess.run(force=True)
+                else:
+                    gameProcess.run()
+                root.destroy()
+
+            tk.Button(button_frame, text="Launch Game", command=on_launch, width=15).pack(side=tk.LEFT, padx=5)
+            tk.Button(button_frame, text="Exit", command=root.destroy, width=15).pack(side=tk.LEFT, padx=5)
+
+            tk.mainloop()
