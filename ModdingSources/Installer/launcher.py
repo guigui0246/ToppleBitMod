@@ -4,9 +4,11 @@ import hashlib
 import sys
 import tempfile
 import time
+from typing import cast, Callable
 import requests
-from ModdingSources.Installer import game
-from options import Options
+from mods import AVAILABLE_MODS, update_mods
+import game
+from options import Options, save_options
 from constants import INSTALLER_DOWNLOAD_URL, GAME_DOWNLOAD_URL, MOD_LOADER_DOWNLOAD_URL, UPDATER_DOWNLOAD_URL
 import os
 import zipfile
@@ -28,7 +30,7 @@ def launcher(options: Options):
     assert options.game_install_path is not None, "Game install path must be set."
     assert options.setting_save_path is not None, "Setting save path must be set."
     assert options.mod_list is not None, "Mod list must be set."
-    options.game_install_path = os.path.dirname(os.path.abspath(options.game_install_path))
+    options.game_install_path = os.path.abspath(options.game_install_path)
 
     try:
         if options.auto_update_installer:
@@ -84,24 +86,31 @@ def launcher(options: Options):
                 options.game_install_path, "backup"
             )
             tempfile_dir = tempfile.TemporaryDirectory()
-            zip_file = zipfile.ZipFile(
-                os.path.join(tempfile_dir.name, "game_backup.zip"), "w"
-            )
-            for foldername, _, filenames in os.walk(options.game_install_path):
-                for filename in filenames:
-                    file_path = os.path.join(foldername, filename)
-                    relative_path = os.path.relpath(
-                        file_path, options.game_install_path
-                    )
-                    zip_file.write(file_path, relative_path)
-            zip_file.close()
-            os.makedirs(backup_dir, exist_ok=True)
             try:
-                shutil.move(
-                    os.path.join(tempfile_dir.name, "game_backup.zip"), backup_dir
-                )
-            except shutil.Error:
-                logging.info("Backup file already exists. Keeping existing backup.")
+                zip_file: zipfile.ZipFile | None = None
+                try:
+                    zip_file = zipfile.ZipFile(
+                        os.path.join(tempfile_dir.name, "game_backup.zip"), "w"
+                    )
+                    for foldername, _, filenames in os.walk(options.game_install_path):
+                        for filename in filenames:
+                            file_path = os.path.join(foldername, filename)
+                            relative_path = os.path.relpath(
+                                file_path, options.game_install_path
+                            )
+                            zip_file.write(file_path, relative_path)
+                finally:
+                    if zip_file is not None:
+                        zip_file.close()
+                os.makedirs(backup_dir, exist_ok=True)
+                try:
+                    shutil.move(
+                        os.path.join(tempfile_dir.name, "game_backup.zip"), backup_dir
+                    )
+                except shutil.Error:
+                    logging.info("Backup file already exists. Keeping existing backup.")
+            finally:
+                tempfile_dir.cleanup()
 
         if options.auto_update_game:
             logging.info("Auto-updating game...")
@@ -112,26 +121,28 @@ def launcher(options: Options):
                 tempfile_dir.name, "LatestGameBuild.zip"
             )
 
-            with open(game_zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            with zipfile.ZipFile(game_zip_path, 'r') as zip_ref:
-                members = [m for m in zip_ref.namelist() if not m.endswith('/')]
-                split_paths = [m.split('/') for m in members]
-                top_levels = {p[0] for p in split_paths}
+            try:
+                with open(game_zip_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                with zipfile.ZipFile(game_zip_path, 'r') as zip_ref:
+                    members = [m for m in zip_ref.namelist() if not m.endswith('/')]
+                    split_paths = [m.split('/') for m in members]
+                    top_levels = {p[0] for p in split_paths}
 
-                # If there's a single top-level directory, then it's double-wrapped
-                if len(top_levels) == 1:
-                    for m, parts in zip(members, split_paths):
-                        relative_path = os.path.join(*parts[1:])
-                        dest = os.path.join(options.game_install_path, relative_path)
+                    # If there's a single top-level directory, then it's double-wrapped
+                    if len(top_levels) == 1:
+                        for m, parts in zip(members, split_paths):
+                            relative_path = os.path.join(*parts[1:])
+                            dest = os.path.join(options.game_install_path, relative_path)
 
-                        os.makedirs(os.path.dirname(dest), exist_ok=True)
-                        with zip_ref.open(m) as src, open(dest, 'wb') as dst:
-                            dst.write(src.read())
-                else:
-                    zip_ref.extractall(options.game_install_path)
-            tempfile_dir.cleanup()
+                            os.makedirs(os.path.dirname(dest), exist_ok=True)
+                            with zip_ref.open(m) as src, open(dest, 'wb') as dst:
+                                dst.write(src.read())
+                    else:
+                        zip_ref.extractall(options.game_install_path)
+            finally:
+                tempfile_dir.cleanup()
 
         if options.auto_update_game or options.auto_update_installer:
             # Now we update the mod loader
@@ -142,26 +153,28 @@ def launcher(options: Options):
                 tempfile_dir.name, "LatestModLoaderBuild.zip"
             )
 
-            with open(mod_loader_zip_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            with zipfile.ZipFile(mod_loader_zip_path, 'r') as zip_ref:
-                members = [m for m in zip_ref.namelist() if not m.endswith('/')]
-                split_paths = [m.split('/') for m in members]
-                top_levels = {p[0] for p in split_paths}
+            try:
+                with open(mod_loader_zip_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                with zipfile.ZipFile(mod_loader_zip_path, 'r') as zip_ref:
+                    members = [m for m in zip_ref.namelist() if not m.endswith('/')]
+                    split_paths = [m.split('/') for m in members]
+                    top_levels = {p[0] for p in split_paths}
 
-                # If there's a single top-level directory, then it's double-wrapped
-                if len(top_levels) == 1:
-                    for m, parts in zip(members, split_paths):
-                        relative_path = os.path.join(*parts[1:])
-                        dest = os.path.join(options.game_install_path, relative_path)
+                    # If there's a single top-level directory, then it's double-wrapped
+                    if len(top_levels) == 1:
+                        for m, parts in zip(members, split_paths):
+                            relative_path = os.path.join(*parts[1:])
+                            dest = os.path.join(options.game_install_path, relative_path)
 
-                        os.makedirs(os.path.dirname(dest), exist_ok=True)
-                        with zip_ref.open(m) as src, open(dest, 'wb') as dst:
-                            dst.write(src.read())
-                else:
-                    zip_ref.extractall(options.game_install_path)
-            tempfile_dir.cleanup()
+                            os.makedirs(os.path.dirname(dest), exist_ok=True)
+                            with zip_ref.open(m) as src, open(dest, 'wb') as dst:
+                                dst.write(src.read())
+                    else:
+                        zip_ref.extractall(options.game_install_path)
+            finally:
+                tempfile_dir.cleanup()
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
@@ -205,10 +218,38 @@ def launcher(options: Options):
             tk.Label(frame, text=f"Game Path: {options.game_install_path}").pack(anchor=tk.W, pady=5)
             tk.Label(frame, text=f"Mods: {', '.join(options.mod_list)}").pack(anchor=tk.W, pady=5)
 
+            # Mod list
+            mod_list_frame = tk.Frame(frame)
+            mod_list_frame.pack(anchor=tk.W, pady=(0, 10), expand=True, fill=tk.X)
+            tk.Label(mod_list_frame, text="Mods to Install (comma-separated):").pack(
+                anchor=tk.W
+            )
+            mod_list_scrollbar = tk.Scrollbar(mod_list_frame, orient=tk.VERTICAL)
+            mod_list_box = tk.Listbox(
+                mod_list_frame,
+                selectmode=tk.MULTIPLE,
+                yscrollcommand=mod_list_scrollbar.set,
+                height=min(5, len(AVAILABLE_MODS)),
+            )
+            mod_list_scrollbar.config(command=mod_list_box.yview)
+            mod_list_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            mod_list_box.pack(anchor=tk.W, pady=(0, 10), fill=tk.X)
+            for mod in AVAILABLE_MODS.keys():
+                mod_list_box.insert(tk.END, mod)
+                if mod in options.mod_list:
+                    mod_list_box.selection_set(tk.END)
+
             button_frame = tk.Frame(frame)
             button_frame.pack(pady=20)
 
             def on_launch():
+                assert options.game_install_path is not None, "Game install path must be set."
+                options.mod_list = [
+                    mod_list_box.get(i)
+                    for i in cast(Callable[[], list[int]], mod_list_box.curselection)()
+                ]
+                save_options(options)
+                update_mods(options.mod_list, options.game_install_path)
                 if gameProcess.is_running():
                     ret = messagebox.askyesnocancel(
                         "Warning",
@@ -229,3 +270,6 @@ def launcher(options: Options):
             tk.Button(button_frame, text="Exit", command=root.destroy, width=15).pack(side=tk.LEFT, padx=5)
 
             tk.mainloop()
+
+
+__all__ = ["launcher"]

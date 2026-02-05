@@ -3,8 +3,7 @@ import shutil
 import sys
 from typing import Any, Callable, cast
 import requests
-import yaml
-from options import parse_options
+from options import load_config, parse_options, save_options
 from launcher import launcher
 from platformdirs import user_config_dir
 from mods import AVAILABLE_MODS
@@ -17,16 +16,6 @@ logging.basicConfig(
     format="[%(asctime)s][%(levelname)s] %(message)s",
     filename=os.path.join(user_config_dir("ToppleBitModding", ensure_exists=True), "installer.log"),
 )
-
-
-def load_config(file_path: str) -> Any:
-    with open(file_path, "r") as file:
-        return yaml.safe_load(file)
-
-
-def save_config(file_path: str, config: Any):
-    with open(file_path, "w") as file:
-        yaml.safe_dump(config, file)
 
 
 def main():
@@ -327,14 +316,8 @@ def main():
     ) as f:
         f.write(os.path.abspath(options.setting_save_path))
 
-    config_to_save = {
-        key: getattr(options, key)
-        for key in vars(options)
-        if getattr(options, key) is not None
-        and getattr(options, key) != []
-        and getattr(options, key) is not False
-    }
-    save_config(options.setting_save_path, config_to_save)
+    options.game_install_path = os.path.dirname(os.path.abspath(options.game_install_path))
+    save_options(options)
 
     launcher(options)
 

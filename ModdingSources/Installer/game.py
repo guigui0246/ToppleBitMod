@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 
 
@@ -12,7 +13,11 @@ class Game():
         if self.process is not None and not force:
             logging.error("Game is already running.")
             return
-        self.process = subprocess.Popen(self.exe_path, creationflags=subprocess.CREATE_NO_WINDOW)
+        self.process = subprocess.Popen(
+            self.exe_path,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            cwd=os.path.dirname(self.exe_path)
+        )
         logging.info(f"Game started with PID {self.process.pid}.")
 
     def kill(self) -> None:

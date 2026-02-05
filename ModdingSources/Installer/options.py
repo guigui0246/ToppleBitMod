@@ -1,4 +1,7 @@
 import argparse
+from typing import Any
+
+import yaml
 
 
 class Options:
@@ -111,3 +114,30 @@ def parse_options():
     options.installer_install_path = args.installer_install_path
 
     return options
+
+
+def load_config(file_path: str) -> Any:
+    with open(file_path, "r") as file:
+        return yaml.safe_load(file)
+
+
+def save_config(file_path: str, config: Any):
+    with open(file_path, "w") as file:
+        yaml.safe_dump(config, file)
+
+
+def save_options(options: Options):
+
+    assert options.setting_save_path is not None, "Setting save path must be provided to save options."
+
+    config_to_save = {
+        key: getattr(options, key)
+        for key in vars(options)
+        if getattr(options, key) is not None
+        and getattr(options, key) != []
+        and getattr(options, key) is not False
+    }
+    save_config(options.setting_save_path, config_to_save)
+
+
+__all__ = ["Options", "parse_options", "load_config", "save_options"]
