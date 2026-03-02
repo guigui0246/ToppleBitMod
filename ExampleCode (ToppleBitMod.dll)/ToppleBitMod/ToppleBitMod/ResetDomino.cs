@@ -8,68 +8,256 @@ namespace ToppleBitMod
 {
     internal class ResetDomino: Domino
     {
-        private Rotation rotationLastTick;
+        private Rotation originalRotation;
 
-        public override int SaveID => 6;
-
-        protected override Rotation RotationLastTick => rotationLastTick;
-
-        protected override Dictionary<int, Rotation[]> ToppleMap => Singleton<DominoMetadata>.I.OrthogonalDominoFallMap;
-
-        public ResetDomino(Vector2Int position, Rotation rotation, FallState fallState)
-            : base(position, rotation, fallState)
+        public static ResetDomino Create(Map map, Simulator simulator, Vector2Int position, Rotation rotation, FallState fallState, RotationSet hitRotations, Rotation originalRotation)
         {
+            return new ResetDomino(map, simulator, position, rotation, fallState, hitRotations, originalRotation);
         }
 
-        public override void LateTick()
+        private ResetDomino(Map map, Simulator simulator, Vector2Int position, Rotation rotation, FallState fallState, RotationSet hitRotations, Rotation originalRotation)
+            : base(map, simulator, position, rotation, fallState, hitRotations)
         {
-            rotationLastTick = rotation;
-            Rotation[] array = ToppleMap[toppleHash];
-            Rotation worldRotation = ((array == null) ? rotation : (array[0] + rotation));
-            Singleton<Simulation>.I.AddChange(new DominoChange(this, worldRotation, FallState.Falling));
+            this.originalRotation = ((fallState == FallState.Standing) ? rotation : originalRotation);
         }
 
-        public override TileBase GetTile()
+        public override void ChangeTick()
         {
-            return fallState switch
+            bool reset = false;
+            base.ChangeTick();
+            Rotation newRotation = hitRotations.GetSingleRotation();
+            if (fallState == FallState.Falling)
             {
-                FallState.Standing => Singleton<TileData>.I.StandingOrthogonalDominoTile,
-                FallState.Falling => Singleton<TileData>.I.FallingOrthogonalDominoTile,
-                FallState.Fallen => Singleton<TileData>.I.FallingOrthogonalDominoTile,
-                _ => null,
-            };
-        }
-
-        public override void Topple(Rotation toppleRotation)
-        {
-            if (fallState == FallState.Standing)
-            {
-                Rotation relativeRotation = toppleRotation - rotation;
-                toppleHash |= Singleton<DominoMetadata>.I.GetHash(relativeRotation);
-
-                if (relativeRotation.Value % 2 == 0)
+                if (newRotation != Rotation.None)
                 {
-                    Loader.Log("Reset happening");
-                    Singleton<Map>.I.ResetMapObjects();
+                    if (newRotation.IsHoriztontal() && rotation.IsHoriztontal())
+                    {
+                        reset = true;
+                    }
+                    if (!newRotation.IsHoriztontal() && !rotation.IsHoriztontal())
+                    {
+                        reset = true;
+                    }
+                    rotation = newRotation;
                 }
-                Singleton<Simulation>.I.AddLateTickableObject(this);
+                Loader.Log($"[ResetDomino] Topple {newRotation.IsHoriztontal()}!");
             }
+            else if (fallState == FallState.Unfalling)
+            {
+                rotation = newRotation;
+            }
+            if (reset)
+            {
+                Loader.Log("Reest happening");
+                simulator.ResetSimulation();
+            }
+        }
 
-            Loader.Log($"[ResetDomino] Topple {toppleRotation.Direction}!");
+        protected override RotationSet GetFallRotations()
+        {
+            if (hitRotations == RotationSet.Right)
+            {
+                return RotationSet.Right;
+            }
+            if (hitRotations == RotationSet.Up)
+            {
+                return RotationSet.Up;
+            }
+            if (hitRotations == RotationSet.Left)
+            {
+                return RotationSet.Left;
+            }
+            if (hitRotations == RotationSet.Down)
+            {
+                return RotationSet.Down;
+            }
+            if (hitRotations == RotationSet.RightUp)
+            {
+                if (!rotation.IsHoriztontal())
+                {
+                    return RotationSet.Up;
+                }
+                return RotationSet.Right;
+            }
+            if (hitRotations == RotationSet.RightLeft)
+            {
+                return RotationSet.None;
+            }
+            if (hitRotations == RotationSet.RightDown)
+            {
+                if (!rotation.IsHoriztontal())
+                {
+                    return RotationSet.Down;
+                }
+                return RotationSet.Right;
+            }
+            if (hitRotations == RotationSet.UpLeft)
+            {
+                if (!rotation.IsHoriztontal())
+                {
+                    return RotationSet.Up;
+                }
+                return RotationSet.Left;
+            }
+            if (hitRotations == RotationSet.UpDown)
+            {
+                return RotationSet.None;
+            }
+            if (hitRotations == RotationSet.LeftDown)
+            {
+                if (!rotation.IsHoriztontal())
+                {
+                    return RotationSet.Down;
+                }
+                return RotationSet.Left;
+            }
+            if (hitRotations == RotationSet.RightUpLeft)
+            {
+                return RotationSet.Up;
+            }
+            if (hitRotations == RotationSet.RightUpDown)
+            {
+                return RotationSet.Right;
+            }
+            if (hitRotations == RotationSet.RightLeftDown)
+            {
+                return RotationSet.Down;
+            }
+            if (hitRotations == RotationSet.UpLeftDown)
+            {
+                return RotationSet.Left;
+            }
+            _ = hitRotations == RotationSet.RightUpDownLeft;
+            return RotationSet.None;
+        }
+
+        public override void Reset()
+        {
+            base.Reset();
+            rotation = originalRotation;
+        }
+
+        public override void RotateLeft()
+        {
+            base.RotateLeft();
+            originalRotation.RotateLeft();
+        }
+
+        public override void RotateRight()
+        {
+            base.RotateRight();
+            originalRotation.RotateRight();
+        }
+
+        public override void MirrorX()
+        {
+            base.MirrorX();
+            originalRotation.MirrorX();
+        }
+
+        public override void MirrorY()
+        {
+            base.MirrorY();
+            originalRotation.MirrorY();
+        }
+
+        public override bool IsEquivalentTo(MapObject mapObject)
+        {
+            if (base.IsEquivalentTo(mapObject) && mapObject is ResetDomino domino)
+            {
+                return domino.originalRotation == originalRotation;
+            }
+            return false;
         }
 
         public override MapObject Clone()
         {
-            ResetDomino domino = new ResetDomino(position, rotation, fallState)
+            return Create(map, simulator, position, rotation, fallState, hitRotations, originalRotation);
+        }
+
+        public override int GetGraphicIndex()
+        {
+            switch (fallState)
             {
-                toppleHash = toppleHash,
-                rotationLastTick = rotationLastTick
-            };
-            if (domino.fallState == FallState.Falling)
-            {
-                domino.LateTick();
+                case FallState.Standing:
+                    if (rotation == Rotation.Right)
+                    {
+                        return 0;
+                    }
+                    if (rotation == Rotation.Up)
+                    {
+                        return 1;
+                    }
+                    if (rotation == Rotation.Left)
+                    {
+                        return 2;
+                    }
+                    if (rotation == Rotation.Down)
+                    {
+                        return 3;
+                    }
+                    break;
+                case FallState.Falling:
+                    if (rotation == Rotation.Right)
+                    {
+                        return 4;
+                    }
+                    if (rotation == Rotation.Up)
+                    {
+                        return 5;
+                    }
+                    if (rotation == Rotation.Left)
+                    {
+                        return 6;
+                    }
+                    if (rotation == Rotation.Down)
+                    {
+                        return 7;
+                    }
+                    break;
+                case FallState.Fallen:
+                    if (rotation == Rotation.Right)
+                    {
+                        return 8;
+                    }
+                    if (rotation == Rotation.Up)
+                    {
+                        return 9;
+                    }
+                    if (rotation == Rotation.Left)
+                    {
+                        return 10;
+                    }
+                    if (rotation == Rotation.Down)
+                    {
+                        return 11;
+                    }
+                    break;
+                case FallState.Unfalling:
+                    if (rotation == Rotation.Right)
+                    {
+                        return 12;
+                    }
+                    if (rotation == Rotation.Up)
+                    {
+                        return 13;
+                    }
+                    if (rotation == Rotation.Left)
+                    {
+                        return 14;
+                    }
+                    if (rotation == Rotation.Down)
+                    {
+                        return 15;
+                    }
+                    break;
             }
-            return domino;
+            return -1;
+        }
+
+        public override Rotation GetSaveRotation()
+        {
+            return originalRotation;
         }
     }
 }

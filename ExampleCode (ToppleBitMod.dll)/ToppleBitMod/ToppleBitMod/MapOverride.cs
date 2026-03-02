@@ -1,36 +1,54 @@
 ﻿using System.Collections.Generic;
 using ToppleBitModding;
 using UnityEngine;
-using UnityEngine.Tilemaps;
+using System;
 
 namespace ToppleBitMod
 {
-    [Patch(typeof(Map), 1)]
-    public class MapOverride
+    [Patch(typeof(MapEditor), 1)]
+    public class MapEditorOverride
     {
-        public static void Awake(Map __instance)
+        public void Constructor(MapEditor __instance, MapEditorInitializationData initializationData, InputSystem inputSystem, Map map, Simulator simulator, ProjectMenuManager projectMenuManager, MapDrawerData mapDrawerData, ApplicationSystem applicationSystem)
         {
-            List<MapObject> objmap = FieldAccess.Get<List<MapObject>>(__instance, "sampleMapObjects");
-            objmap.Add(new ResetDomino(Vector2Int.zero, Rotation.RIGHT, FallState.Standing));
-            objmap.Add(new ResetDomino(Vector2Int.zero, Rotation.RIGHT, FallState.Falling));
-            objmap.Add(new ResetDomino(Vector2Int.zero, Rotation.RIGHT, FallState.Fallen));
-            Loader.Log("Added Reset Domino");
-            __instance.ResetMapObjects();
-            FieldAccess.Get<Dictionary<Vector2Int, MapObject>>(__instance, "mapObjects").Clear();
-
-
-            foreach (Vector3Int position in FieldAccess.Get<Tilemap>(__instance, "tilemap").cellBounds.allPositionsWithin)
+            var mapObjectTilemap = initializationData.GetMapObjectTilemap();
+            FieldAccess.Set(__instance, "mapObjectTilemap", mapObjectTilemap);
+            var selectionTilemap = initializationData.GetSelectionTilemap();
+            FieldAccess.Set(__instance, "selectionTilemap", selectionTilemap);
+            var selectionTile = initializationData.GetSelectionTile();
+            FieldAccess.Set(__instance, "selectionTile", selectionTile);
+            var maxEditHistory = initializationData.GetMaxEditHistory();
+            FieldAccess.Set(__instance, "maxEditHistory", maxEditHistory);
+            FieldAccess.Set(__instance, "rotateLeftKey", initializationData.GetRotateLeftKey());
+            FieldAccess.Set(__instance, "rotateRightKey", initializationData.GetRotateRightKey());
+            FieldAccess.Set(__instance, "mirrorXKey", initializationData.GetMirrorXKey());
+            FieldAccess.Set(__instance, "mirrorYKey", initializationData.GetMirrorYKey());
+            FieldAccess.Set(__instance, "undoKey", initializationData.GetUndoKey());
+            FieldAccess.Set(__instance, "redoKey", initializationData.GetRedoKey());
+            FieldAccess.Set(__instance, "clearKey", initializationData.GetClearKey());
+            FieldAccess.Set(__instance, "inputSystem", inputSystem);
+            FieldAccess.Set(__instance, "map", map);
+            var selection = Selection.Create(map);
+            FieldAccess.Set(__instance, "selection", selection);
+            FieldAccess.Set(__instance, "selectionDrawer", SelectionDrawer.Create(selection, mapObjectTilemap, selectionTilemap, selectionTile, mapDrawerData));
+            FieldAccess.Set(__instance, "editHistory", EditHistory.Create(maxEditHistory));
+            FieldAccess.Set(__instance, "sampleMapObjects", new MapObject[8]
             {
-                TileBase tile = FieldAccess.Get<Tilemap>(__instance, "tilemap").GetTile(position);
-                if (!(tile == null))
-                {
-                    MapObject mapObject = objmap.Find((MapObject mapObject2) => mapObject2.GetTile() == tile).Clone();
-                    Vector2Int position2D = (mapObject.Position = (Vector2Int)position);
-                    Matrix4x4 matrix = FieldAccess.Get<Tilemap>(__instance, "tilemap").GetTransformMatrix(position);
-                    mapObject.Rotation = Rotation.FromMatrix(matrix);
-                    FieldAccess.Get<Dictionary<Vector2Int, MapObject>>(__instance, "mapObjects").Add(position2D, mapObject);
-                }
-            }
+                OrthogonalDomino.Create(map, simulator, Vector2Int.zero, Rotation.Right, FallState.Standing, RotationSet.None, Rotation.Right),
+                DiagonalDomino.Create(map, simulator, Vector2Int.zero, Rotation.Right, FallState.Standing, RotationSet.None),
+                ForkDomino.Create(map, simulator, Vector2Int.zero, Rotation.Right, FallState.Standing, RotationSet.None),
+                Crossover.Create(map, simulator, Vector2Int.zero, Rotation.Right, RotationFallStateSet.None, RotationFallStateSet.None),
+                Unfaller.Create(map, simulator, Vector2Int.zero, Rotation.Right, RotationFallStateSet.None, RotationFallStateSet.None),
+                Trigger.Create(map, simulator, Vector2Int.zero, Rotation.Right, hasTriggered: false),
+                ClickTrigger.Create(map, simulator, Vector2Int.zero, Rotation.Right, hitByClickTrigger: false, needsToTrigger: false),
+                ResetDomino.Create(map, simulator, Vector2Int.zero, Rotation.Right, FallState.Standing, RotationSet.None, Rotation.Right)
+            });
+            FieldAccess.Get<Action>(__instance, "InitStateMachine")();
+            applicationSystem.AddQuitAborter(__instance);
+            selection.OnMapChanged += FieldAccess.Get<Action>(__instance, "OnMapChanged");
+            projectMenuManager.OnProjectSelected += FieldAccess.Get<Action<List<MapObject>>>(__instance, "OnProjectSelected");
+            projectMenuManager.OnProjectSaved += FieldAccess.Get<Action>(__instance, "OnProjectSaved");
+            projectMenuManager.OnProjectLoaded += FieldAccess.Get<Action>(__instance, "OnProjectLoaded");
+            Loader.Log("Added Reset Domino");
         }
     }
 }
