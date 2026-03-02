@@ -116,6 +116,25 @@ namespace ToppleBitModding
                 });
         }
 
+
+        private static ConstructorInfo ResolveTargetConstructor(MethodInfo patch, Type target)
+        {
+            var patchParams = patch.GetParameters()
+                .Where(p =>
+                    p.Name != "__instance" &&
+                    !typeof(Delegate).IsAssignableFrom(p.ParameterType))
+                .Select(p => p.ParameterType)
+                .ToArray();
+
+            return target.GetConstructors(BindingFlags.Public |
+                                     BindingFlags.NonPublic |
+                                     BindingFlags.Instance)
+                .FirstOrDefault(m =>
+                {
+                    var mp = m.GetParameters().Select(p => p.ParameterType).ToArray();
+                    return mp.SequenceEqual(patchParams);
+                });
+        }
         private static void PatchType(Type patchType, Type targetType)
         {
             try
@@ -123,11 +142,23 @@ namespace ToppleBitModding
                 var methods = patchType.GetMethods(BindingFlags.Public | BindingFlags.Static);
                 foreach (var patchMethod in methods)
                 {
+                    if (patchMethod.Name == "Constructor")
+                        continue;
                     var targetMethod = ResolveTargetMethod(patchMethod, targetType);
                     if (targetMethod == null) continue;
 
-                    Detour(targetMethod, patchMethod);
+                    Detour(targetType, patchMethod.Name, targetMethod, patchMethod);
                     Loader.Log($"[PatchEngine] Patched {targetType.Name}.{targetMethod.Name}");
+                }
+                foreach (var patchConstructor in methods)
+                {
+                    if (patchConstructor.Name != "Constructor")
+                        continue;
+                    var targetConstructor = ResolveTargetConstructor(patchConstructor, targetType);
+                    if (targetConstructor == null) continue;
+
+                    Detour(targetType, "Constructor", targetConstructor, patchConstructor);
+                    Loader.Log($"[PatchEngine] Patched constructor {targetConstructor.Name} of {targetType.Name}");
                 }
             }
             catch (Exception ex)
@@ -136,46 +167,21 @@ namespace ToppleBitModding
             }
         }
 
+        private static Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo> trampolines = new Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo>();
 
-        public static unsafe void Detour(MethodInfo original, MethodInfo replacement)
+        public static void Detour(Type type, string name, MethodBase original, MethodBase replacement)
         {
-            IntPtr oriPtr = MonoNative.GetNativePtr(original);
-            IntPtr repPtr = MonoNative.GetNativePtr(replacement);
-
-            ProtectRWX(oriPtr, 16);
-
-            if (IntPtr.Size == 8)
-            {
-                // x64: mov rax, addr; jmp rax
-                byte* p = (byte*)oriPtr;
-                p[0] = 0x48;
-                p[1] = 0xB8;
-                *(ulong*)(p + 2) = (ulong)repPtr.ToInt64();
-                p[10] = 0xFF;
-                p[11] = 0xE0;
-            }
-            else
-            {
-                // x86: jmp rel32
-                byte* p = (byte*)oriPtr;
-                p[0] = 0xE9;
-                *(int*)(p + 1) = (int)(repPtr.ToInt64() - oriPtr.ToInt64() - 5);
-            }
+            DetourMaker.DetourInfo info = DetourMaker.Detour(original, replacement);
+            trampolines.Add(new Tuple<Type, string>(type, name), info);
         }
 
-        private static void ProtectRWX(IntPtr addr, int size)
+        public static T GetOriginalMethod<T>(object instance, string name)
+            where T: Delegate
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                VirtualProtect(addr, (UIntPtr)size, 0x40, out _);
+            if (trampolines.TryGetValue(new Tuple<Type, string>(instance.GetType(), name), out var info)) {
+                return Marshal.GetDelegateForFunctionPointer<T>(info.TrampolinePtr);
             }
+            return FieldAccess.Get<T>(instance, name);
         }
-
-        [DllImport("kernel32.dll")]
-        private static extern bool VirtualProtect(
-            IntPtr lpAddress,
-            UIntPtr dwSize,
-            uint flNewProtect,
-            out uint lpflOldProtect);
     }
 }

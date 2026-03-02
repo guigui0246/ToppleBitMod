@@ -31,7 +31,7 @@ public class SimulationUIOverride
         int i = 0;
         foreach (MapObject mapObject in map_list)
         {
-            if (i < 6)
+            if (i < 7)
             {
                 i++;
                 continue;

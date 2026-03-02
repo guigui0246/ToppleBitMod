@@ -66,7 +66,7 @@ namespace ToppleBitModding
             // Force JIT + get native pointer
             return MonoNative.mono_compile_method(method);
         }
-        public static IntPtr GetNativePtr(MethodInfo method)
+        public static IntPtr GetNativePtr(MethodBase method)
         {
             if (method == null)
                 throw new ArgumentNullException(nameof(method));
