@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 
 namespace ToppleBitModding
@@ -70,6 +71,29 @@ namespace ToppleBitModding
 
         public static void ForceUnityReload()
         {
+            try
+            {
+                var sceneManagerType = Type.GetType("UnityEngine.SceneManagement.SceneManager, UnityEngine.CoreModule") ?? throw new MissingReferenceException("UnityEngine.SceneManagement.SceneManager cannot be found");
+
+                var loadSceneMethod = sceneManagerType.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).FirstOrDefault(m => {
+                    var parameters = m.GetParameters();
+                    Loader.Log($"method {m.Name} found with {parameters.Length} params");
+                    if (m.Name != "LoadScene") return false;
+                    return parameters.Length == 2 &&
+                           parameters[0].ParameterType == typeof(string);
+                }) ?? throw new MissingMethodException("SceneManager", "LoadScene");
+
+                var getActiveSceneMethod = sceneManagerType.GetMethod("GetActiveScene", BindingFlags.Public | BindingFlags.Static);
+                var activeScene = getActiveSceneMethod.Invoke(null, null);
+                var nameProperty = activeScene.GetType().GetProperty("name");
+                string sceneName = (string)nameProperty.GetValue(activeScene);
+
+                loadSceneMethod.Invoke(null, new object[] { sceneName, LoadSceneMode.Single });
+                Loader.Log("Scene reloaded");
+                return;
+            } catch (Exception e) {
+                Loader.Log($"WARNING error reloading scene, trying to catch by running all new awake methods:\n{e.Message}\n{e.StackTrace}");
+            }
             UnityEngine.Object[] allObjects = Resources.FindObjectsOfTypeAll(typeof(MonoBehaviour));
 
             foreach (PatchAttribute PatchedType in PatchedTypes.OrderBy((p) => p.Order))

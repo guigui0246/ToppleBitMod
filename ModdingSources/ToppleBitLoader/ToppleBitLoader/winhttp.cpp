@@ -27,6 +27,8 @@ typedef void* (*mono_domain_assembly_open_t)(void*, const char*);
 mono_domain_assembly_open_t mono_domain_assembly_open_orig = nullptr;
 typedef void* (*mono_assembly_open_full_t)(const char* filename, void* status, int refonly);
 mono_assembly_open_full_t mono_assembly_open_full_orig = nullptr;
+typedef void* (*mono_runtime_invoke_t)(void*, void*, void**, void**);
+mono_runtime_invoke_t mono_runtime_invoke_orig = nullptr;
 
 
 // Forward declarations for WinHttp functions
@@ -358,6 +360,28 @@ void* hooked_mono_assembly_open_full(
     return mono_assembly_open_full_orig(filename, status, refonly);
 }
 
+void* hooked_mono_runtime_invoke(void* method, void* obj, void** params, void** exc)
+{
+    MessageBoxA(NULL, "[Hook] mono_runtime_invoke called", "INFO", MB_OK);
+
+    // Call the original function
+    void* result = mono_runtime_invoke_orig(method, obj, params, exc);
+
+    // Check for exceptions
+    if (exc && *exc) {
+        MessageBoxA(NULL, "[Hook] Exception detected in mono_runtime_invoke", "WARNING", MB_OK);
+    }
+
+    auto mono_domain_get = (void* (*)())GetProcAddress(mono, "mono_domain_get");
+    if (mono_domain_get) {
+        void* domain = mono_domain_get();
+        if (domain) {
+            LoadManagedMod(domain);
+        }
+    }
+    return result;
+}
+
 /*void* hooked_mono_jit_init(const char* name)
 {
     MessageBoxA(NULL, "[Bootstrap] Hooked", "Info", MB_OK);
@@ -455,6 +479,20 @@ void InstallMonoHooks()
         MessageBoxA(NULL, "Missing jit init version", "ERROR", MB_OK);
     }
 
+    auto mono_runtime_invoke_addr = GetProcAddress(mono, "mono_runtime_invoke");
+    if (mono_runtime_invoke_addr)
+    {
+        MH_CreateHook(
+            mono_runtime_invoke_addr,
+            &hooked_mono_runtime_invoke,
+            reinterpret_cast<void**>(&mono_runtime_invoke_orig)
+        );
+        MH_EnableHook(mono_runtime_invoke_addr);
+    }
+    else {
+        MessageBoxA(NULL, "Missing mono_runtime_invoke", "ERROR", MB_OK);
+    }
+
     g_monoHookInstalled = true;
 }
 
@@ -527,7 +565,7 @@ HMODULE WINAPI hooked_LoadLibraryExW(
 void Bootstrap()
 {
     MH_Initialize();
-    
+
     HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
     if (!kernel32)
     {
