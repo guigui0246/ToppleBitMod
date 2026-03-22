@@ -1,10 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using System.Collections.Generic;
 
 namespace ToppleBitModding
 {
@@ -28,7 +29,7 @@ namespace ToppleBitModding
 
     public static class PatchEngine
     {
-        private static List<PatchAttribute> PatchedTypes = new List<PatchAttribute>();
+        private readonly static List<PatchAttribute> PatchedTypes = new List<PatchAttribute>();
 
         public static void PatchAll()
         {
@@ -71,25 +72,28 @@ namespace ToppleBitModding
 
         public static void ForceUnityReload()
         {
+            return;// If we hook soon enough it's useless
             try
             {
-                var sceneManagerType = Type.GetType("UnityEngine.SceneManagement.SceneManager, UnityEngine.CoreModule") ?? throw new MissingReferenceException("UnityEngine.SceneManagement.SceneManager cannot be found");
+                var sceneManagerType = Type.GetType("UnityEngine.SceneManagement.SceneManager, UnityEngine.CoreModule")
+                    ?? throw new MissingReferenceException("SceneManager not found");
 
-                var loadSceneMethod = sceneManagerType.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).FirstOrDefault(m => {
-                    var parameters = m.GetParameters();
-                    Loader.Log($"method {m.Name} found with {parameters.Length} params");
-                    if (m.Name != "LoadScene") return false;
-                    return parameters.Length == 2 &&
-                           parameters[0].ParameterType == typeof(string);
-                }) ?? throw new MissingMethodException("SceneManager", "LoadScene");
+                var method = sceneManagerType.GetMethod(
+                    "LoadFirstScene_Internal",
+                    BindingFlags.Static | BindingFlags.NonPublic);
 
-                var getActiveSceneMethod = sceneManagerType.GetMethod("GetActiveScene", BindingFlags.Public | BindingFlags.Static);
-                var activeScene = getActiveSceneMethod.Invoke(null, null);
-                var nameProperty = activeScene.GetType().GetProperty("name");
-                string sceneName = (string)nameProperty.GetValue(activeScene);
+                if (method == null)
+                    throw new MissingMethodException("LoadFirstScene_Internal not found");
 
-                loadSceneMethod.Invoke(null, new object[] { sceneName, LoadSceneMode.Single });
-                Loader.Log("Scene reloaded");
+                Loader.Log("Calling LoadFirstScene_Internal...");
+
+                Task.Run(async () =>
+                {
+                    await Task.Delay(100);
+                    method.Invoke(null, new object[] { false });
+                });
+
+                Loader.Log("Scene reload SUCCESS via LoadFirstScene_Internal");
                 return;
             } catch (Exception e) {
                 Loader.Log($"WARNING error reloading scene, trying to catch by running all new awake methods:\n{e.Message}\n{e.StackTrace}");
@@ -104,7 +108,7 @@ namespace ToppleBitModding
                     if (mb == null) continue;
 
                     if (!PatchedType.TargetType.IsAssignableFrom(mb.GetType())) continue;
-                    
+
                     // Call Awake via reflection
                     var awake = PatchedType.TargetType.GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                     try
@@ -164,12 +168,20 @@ namespace ToppleBitModding
             try
             {
                 var methods = patchType.GetMethods(BindingFlags.Public | BindingFlags.Static);
+                if (!methods.Any())
+                {
+                    Loader.Log($"[PatchEngine] Warning no method found for {targetType.Name}");
+                }
                 foreach (var patchMethod in methods)
                 {
                     if (patchMethod.Name == "Constructor")
                         continue;
                     var targetMethod = ResolveTargetMethod(patchMethod, targetType);
-                    if (targetMethod == null) continue;
+                    if (targetMethod == null)
+                    {
+                        Loader.Log($"[PatchEngine] No target method to patch for {targetType.Name}{patchMethod.Name}");
+                        continue;
+                    }
 
                     Detour(targetType, patchMethod.Name, targetMethod, patchMethod);
                     Loader.Log($"[PatchEngine] Patched {targetType.Name}.{targetMethod.Name}");
@@ -179,7 +191,11 @@ namespace ToppleBitModding
                     if (patchConstructor.Name != "Constructor")
                         continue;
                     var targetConstructor = ResolveTargetConstructor(patchConstructor, targetType);
-                    if (targetConstructor == null) continue;
+                    if (targetConstructor == null)
+                    {
+                        Loader.Log($"[PatchEngine] No target constructor to patch for {targetType.Name}");
+                        continue;
+                    }
 
                     Detour(targetType, "Constructor", targetConstructor, patchConstructor);
                     Loader.Log($"[PatchEngine] Patched constructor {targetConstructor.Name} of {targetType.Name}");
@@ -191,7 +207,7 @@ namespace ToppleBitModding
             }
         }
 
-        private static Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo> trampolines = new Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo>();
+        private readonly static Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo> trampolines = new Dictionary<Tuple<Type, string>, DetourMaker.DetourInfo>();
 
         public static void Detour(Type type, string name, MethodBase original, MethodBase replacement)
         {

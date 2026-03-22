@@ -5,6 +5,7 @@
 #include "./include/MinHook.h"
 
 HMODULE mono = nullptr;
+static bool injected = false;
 
 bool g_mod_loaded = false;
 HMODULE realWinHttp = nullptr;
@@ -34,97 +35,97 @@ mono_runtime_invoke_t mono_runtime_invoke_orig = nullptr;
 // Forward declarations for WinHttp functions
 extern "C" {
     __declspec(dllexport) void* __stdcall WinHttpOpen(void* a, int b, void* c, void* d, int e) {
-        typedef void* (__stdcall *FuncType)(void*, int, void*, void*, int);
+        typedef void* (__stdcall* FuncType)(void*, int, void*, void*, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpOpen");
         return func ? func(a, b, c, d, e) : nullptr;
     }
 
     __declspec(dllexport) void* __stdcall WinHttpConnect(void* a, void* b, int c, int d) {
-        typedef void* (__stdcall *FuncType)(void*, void*, int, int);
+        typedef void* (__stdcall* FuncType)(void*, void*, int, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpConnect");
         return func ? func(a, b, c, d) : nullptr;
     }
 
     __declspec(dllexport) void* __stdcall WinHttpOpenRequest(void* a, void* b, void* c, void* d, void* e, void* f, int g) {
-        typedef void* (__stdcall *FuncType)(void*, void*, void*, void*, void*, void*, int);
+        typedef void* (__stdcall* FuncType)(void*, void*, void*, void*, void*, void*, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpOpenRequest");
         return func ? func(a, b, c, d, e, f, g) : nullptr;
     }
 
     __declspec(dllexport) int __stdcall WinHttpSendRequest(void* a, void* b, int c, void* d, int e, int f, void* g) {
-        typedef int (__stdcall *FuncType)(void*, void*, int, void*, int, int, void*);
+        typedef int(__stdcall* FuncType)(void*, void*, int, void*, int, int, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpSendRequest");
         return func ? func(a, b, c, d, e, f, g) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpReceiveResponse(void* a, void* b) {
-        typedef int (__stdcall *FuncType)(void*, void*);
+        typedef int(__stdcall* FuncType)(void*, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpReceiveResponse");
         return func ? func(a, b) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpReadData(void* a, void* b, int c, void* d) {
-        typedef int (__stdcall *FuncType)(void*, void*, int, void*);
+        typedef int(__stdcall* FuncType)(void*, void*, int, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpReadData");
         return func ? func(a, b, c, d) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpCloseHandle(void* a) {
-        typedef int (__stdcall *FuncType)(void*);
+        typedef int(__stdcall* FuncType)(void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpCloseHandle");
         return func ? func(a) : 0;
     }
 
     // Additional commonly used WinHttp functions - generic forwarder
-    #define FORWARD_WINHTTP(name) \
+#define FORWARD_WINHTTP(name) \
     __declspec(dllexport) __declspec(naked) void __stdcall name() { \
         __asm { jmp dword ptr [realWinHttp + name##_offset] } \
     }
 
     __declspec(dllexport) int __stdcall WinHttpGetIEProxyConfigForCurrentUser(void* a) {
-        typedef int (__stdcall *FuncType)(void*);
+        typedef int(__stdcall* FuncType)(void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpGetIEProxyConfigForCurrentUser");
         return func ? func(a) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpGetProxyForUrl(void* a, void* b, void* c, void* d) {
-        typedef int (__stdcall *FuncType)(void*, void*, void*, void*);
+        typedef int(__stdcall* FuncType)(void*, void*, void*, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpGetProxyForUrl");
         return func ? func(a, b, c, d) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpSetOption(void* a, int b, void* c, int d) {
-        typedef int (__stdcall *FuncType)(void*, int, void*, int);
+        typedef int(__stdcall* FuncType)(void*, int, void*, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpSetOption");
         return func ? func(a, b, c, d) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpQueryOption(void* a, int b, void* c, void* d) {
-        typedef int (__stdcall *FuncType)(void*, int, void*, void*);
+        typedef int(__stdcall* FuncType)(void*, int, void*, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpQueryOption");
         return func ? func(a, b, c, d) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpQueryHeaders(void* a, int b, void* c, void* d, void* e, void* f) {
-        typedef int (__stdcall *FuncType)(void*, int, void*, void*, void*, void*);
+        typedef int(__stdcall* FuncType)(void*, int, void*, void*, void*, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpQueryHeaders");
         return func ? func(a, b, c, d, e, f) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpQueryDataAvailable(void* a, void* b) {
-        typedef int (__stdcall *FuncType)(void*, void*);
+        typedef int(__stdcall* FuncType)(void*, void*);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpQueryDataAvailable");
         return func ? func(a, b) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpAddRequestHeaders(void* a, void* b, int c, int d) {
-        typedef int (__stdcall *FuncType)(void*, void*, int, int);
+        typedef int(__stdcall* FuncType)(void*, void*, int, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpAddRequestHeaders");
         return func ? func(a, b, c, d) : 0;
     }
 
     __declspec(dllexport) int __stdcall WinHttpSetTimeouts(void* a, int b, int c, int d, int e) {
-        typedef int (__stdcall *FuncType)(void*, int, int, int, int);
+        typedef int(__stdcall* FuncType)(void*, int, int, int, int);
         auto func = (FuncType)GetProcAddress(realWinHttp, "WinHttpSetTimeouts");
         return func ? func(a, b, c, d, e) : 0;
     }
@@ -142,6 +143,11 @@ bool IsMonoDLL(LPCWSTR path)
 
 void LoadManagedMod(void* domain)
 {
+    if (injected) {
+        return;
+    }
+    injected = true;
+
     // Get path
     wchar_t dllPath[MAX_PATH];
     GetModuleFileNameW(thisModule, dllPath, MAX_PATH);
@@ -207,9 +213,9 @@ void LoadManagedMod(void* domain)
 
     char dbgMsg[512];
     sprintf_s(dbgMsg, sizeof(dbgMsg), "[Bootstrap] File found:\n%s\n\nMods folder:\n%s", ansiModPath, ansiModsDir);
-    //MessageBoxA(NULL, dbgMsg, "Debug Info", MB_OK);
+    // MessageBoxA(NULL, dbgMsg, "Debug Info", MB_OK);
 
-    MessageBoxA(NULL, "[Bootstrap] About to call mono_domain_assembly_open...", "Debug", MB_OK);
+    // MessageBoxA(NULL, "[Bootstrap] About to call mono_domain_assembly_open...", "Debug", MB_OK);
 
     void* assembly = nullptr;
     __try {
@@ -282,19 +288,16 @@ void LoadManagedMod(void* domain)
         return;
     }
 
-    MessageBoxA(NULL, "[Bootstrap] Assembly loaded and Init() invoked successfully!", "Success", MB_OK);
+    // MessageBoxA(NULL, "[Bootstrap] Assembly loaded and Init() invoked successfully!", "Success", MB_OK);
 }
 
 void* hooked_mono_domain_assembly_open(void* domain, const char* name)
 {
-    MessageBoxA(NULL, "Running mono domain assembly open", "INFO", MB_OK);
-    static bool injected = false;
-
-    if (!injected && name)
+    if (name)
     {
-        if (strstr(name, "Assembly-CSharp.dll"))
+        if (strstr(name, "mscorlib.dll") || strstr(name, "System.dll") || strstr(name, "Assembly-CSharp.dll"))
         {
-            injected = true;
+            MessageBoxA(NULL, "Running mono domain assembly open", "INFO", MB_OK);
 
             LoadManagedMod(domain);
         }
@@ -305,12 +308,13 @@ void* hooked_mono_domain_assembly_open(void* domain, const char* name)
 
 void* hooked_mono_jit_init(const char* name)
 {
-    MessageBoxA(NULL, "Running JIT", "INFO", MB_OK);
+    // MessageBoxA(NULL, "Running JIT", "INFO", MB_OK);
     void* domain = mono_jit_init_orig(name);
 
-    if (!domain)
+    if (!domain) {
         MessageBoxA(NULL, "[Bootstrap] Cannot get root domain!", "Error", MB_OK);
         return nullptr;
+    }
 
     LoadManagedMod(domain);
     return domain;
@@ -318,12 +322,13 @@ void* hooked_mono_jit_init(const char* name)
 
 void* hooked_mono_jit_init_version(const char* name, const char* version)
 {
-    MessageBoxA(NULL, "Running JIT version", "INFO", MB_OK);
+    // MessageBoxA(NULL, "Running JIT version", "INFO", MB_OK);
     void* domain = mono_jit_init_version_orig(name, version);
 
-    if (!domain)
+    if (!domain) {
         MessageBoxA(NULL, "[Bootstrap] Cannot get root domain!", "Error", MB_OK);
-    return nullptr;
+        return nullptr;
+    }
 
     LoadManagedMod(domain);
     return domain;
@@ -334,16 +339,12 @@ void* hooked_mono_assembly_open_full(
     void* status,
     int refonly)
 {
-    MessageBoxA(NULL, "Running open full", "INFO", MB_OK);
-    static bool injected = false;
+    // MessageBoxA(NULL, "Running open full", "INFO", MB_OK);
 
-    if (!injected && filename)
+    if (filename)
     {
-        if (strstr(filename, "Assembly-CSharp.dll"))
+        if (strstr(filename, "mscorlib.dll") || strstr(filename, "System.dll") || strstr(filename, "Assembly-CSharp.dll"))
         {
-            injected = true;
-
-            // 🔥 EARLIEST SAFE POINT
             void* domain = nullptr;
 
             auto mono_domain_get =
@@ -362,7 +363,7 @@ void* hooked_mono_assembly_open_full(
 
 void* hooked_mono_runtime_invoke(void* method, void* obj, void** params, void** exc)
 {
-    MessageBoxA(NULL, "[Hook] mono_runtime_invoke called", "INFO", MB_OK);
+    // MessageBoxA(NULL, "[Hook] mono_runtime_invoke called", "INFO", MB_OK);
 
     // Call the original function
     void* result = mono_runtime_invoke_orig(method, obj, params, exc);
@@ -415,19 +416,19 @@ void InstallMonoHooks()
     if (g_monoHookInstalled || !mono)
         return;
 
-    auto assembly_open_full_addr = GetProcAddress(mono, "mono_domain_assembly_open");
-    if (assembly_open_full_addr)
+    auto mono_assembly_open_full = GetProcAddress(mono, "mono_assembly_open_full");
+    if (mono_assembly_open_full)
     {
         MH_CreateHook(
-            assembly_open_full_addr,
+            mono_assembly_open_full,
             &hooked_mono_assembly_open_full,
             reinterpret_cast<void**>(&mono_assembly_open_full_orig)
         );
 
-        MH_EnableHook(assembly_open_full_addr);
+        MH_EnableHook(mono_assembly_open_full);
     }
     else {
-        MessageBoxA(NULL, "mono_domain_assembly_open not found", "Error", MB_OK);
+        MessageBoxA(NULL, "mono_assembly_open_full not found", "Error", MB_OK);
     }
 
 
